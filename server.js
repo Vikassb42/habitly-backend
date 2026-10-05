@@ -1,6 +1,7 @@
 const authRoutes = require("./routes/authRoutes");
 const habitRoutes = require("./routes/habitRoutes");
 const userRoutes = require("./routes/userRoutes");
+const reminderRoutes = require("./routes/reminderRoutes");
 require("dotenv").config();
 const mongoose = require("mongoose");
 const express = require("express");
@@ -17,6 +18,9 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/habits", habitRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/reminders", reminderRoutes);
+
+
 
 app.get("/", (req, res) => {
   res.send("Habit Tracker Backend is running!");

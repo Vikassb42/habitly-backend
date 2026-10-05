@@ -2,8 +2,11 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 
 const router = express.Router();
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -133,42 +136,111 @@ router.post("/login", async (req, res) => {
 });
 
 
+
+router.post("/google/register-info", async (req, res) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({
+        message: "Google credential is required",
+      });
+    }
+
+    // Verify Google access token
+    const tokenInfo = await googleClient.getTokenInfo(credential);
+
+    // Make sure the token belongs to our Habitly Google client
+    if (tokenInfo.aud !== process.env.GOOGLE_CLIENT_ID) {
+      return res.status(401).json({
+        message: "Invalid Google client",
+      });
+    }
+
+    const email = String(tokenInfo.email || "").toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({
+        message: "Google account email not available",
+      });
+    }
+
+    // Check whether this email already has a Habitly account
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: "An account with this Google email already exists. Please sign in instead.",
+      });
+    }
+
+    res.status(200).json({
+      name: tokenInfo.name || email.split("@")[0],
+      email,
+    });
+  } catch (error) {
+    console.error("Google registration info error:", error);
+
+    res.status(401).json({
+      message: "Google authentication failed",
+    });
+  }
+});
+
 // =====================================================
 // GOOGLE LOGIN
 // =====================================================
 
 router.post("/google", async (req, res) => {
-    try {
-        const email = String(req.body.email || "").toLowerCase();
+  try {
+    const { credential } = req.body;
 
-        if (!email || !EMAIL_RE.test(email)) {
-            return res.status(400).json({
-                message: "Please provide a valid Gmail address"
-            });
-        }
-
-        // Only allow Google login for an existing account
-        const user = await User.findOne({ email });
-
-        if (!user) {
-            return res.status(401).json({
-                message: "This Google account is not registered. Please create an account first."
-            });
-        }
-
-        // Existing user → create JWT
-        res.status(200).json({
-            message: "Google login successful",
-            token: signToken(user._id),
-            user: publicUser(user)
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            message: "Server error",
-            error: error.message
-        }); 
+    if (!credential) {
+      return res.status(400).json({
+        message: "Google credential is required",
+      });
     }
+
+    // Verify the Google access token
+    const tokenInfo = await googleClient.getTokenInfo(credential);
+
+    // Make sure this token belongs to our Habitly Google client
+    if (tokenInfo.aud !== process.env.GOOGLE_CLIENT_ID) {
+      return res.status(401).json({
+        message: "Invalid Google client",
+      });
+    }
+
+    const email = String(tokenInfo.email || "").toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({
+        message: "Google account email not available",
+      });
+    }
+
+    // Check whether this Google account already exists
+    const user = await User.findOne({ email });
+
+if (!user) {
+  return res.status(404).json({
+    message: "No account found with this Google account. Please register first.",
+  });
+}
+
+    // Existing or newly created user → create Habitly JWT
+    res.status(200).json({
+      message: "Google login successful",
+      token: signToken(user._id),
+      user: publicUser(user),
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+
+    res.status(401).json({
+      message: "Google authentication failed",
+    });
+  }
 });
 
 
